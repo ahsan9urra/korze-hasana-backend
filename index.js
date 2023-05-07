@@ -2,278 +2,331 @@ const express = require('express');
 const mysql = require('mysql');
 const path = require('path');
 const bodyParser = require('body-parser');
-const { error } = require('console');
+const cors = require("cors")
 
 const app = express();
 const port = 4000;
 
-const con = mysql.createConnection({
-    host:'localhost',
-    user:'root',
-    password:'',
-    database:'karje_hasana'
+const database = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: 'karze_hasana'
 });
+
+// cross origin issue
+const allowedOrigins = ["http://localhost:3000", "https://korze-hasan-frontend.vercel.app"]
+
+app.use(
+    cors({
+        origin: allowedOrigins,
+    })
+)
 
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({extended:true}));
+app.use(bodyParser.urlencoded({ extended: true }));
 
-app.use(express.static(path.join(__dirname,'static')));
+app.use(express.static(path.join(__dirname, 'static')));
 
-//insert data
-app.post('/api/signup',(req,res)=>{
-    const {user_name,full_name,joining_date,address,city,email,pass} = req.body; 
+
+
+
+
+
+
+
+
+// sign up
+app.post('/api/signup', (req, res) => {
+    const { user_name, full_name, joining_date, address, city, email, pass } = req.body;
     let query = 'insert into members values(?,?,?,?,?,?,?)';
-    const values = [user_name,full_name,joining_date,address,city,email,pass];
+    const values = [user_name, full_name, joining_date, address, city, email, pass];
 
-    console.log(user_name+" "+full_name+" "+joining_date+" "+address+" "+city+" "+email+" "+pass);
-    con.query(query,values,(error,results,fields)=>{
-        if(error) {
-            res.sendStatus(500);
-            console.log("error");
+    console.log(user_name + " " + full_name + " " + joining_date + " " + address + " " + city + " " + email + " " + pass);
+    database.query(query, values, (error) => {
+        if (error) {
+            res.status(500).send({
+                message: "Something went wrong!"
+            });
         }
-        else{
-            res.sendStatus(200);
-            console.log("ok");
+        else {
+            res.status(200).send({
+                message: "Sign up successful!"
+            });
         }
     })
 });
-app.post('/api/login',(req,res)=>{//check login info and verify it
-    const user_name = req.body.user_name;
+
+// sign in
+app.post('/api/login', (req, res) => {//check login info and verify it
+    const user_name = req.body.username;
     const pass = req.body.pass;
     let query = 'select * from members where memberUser_name=? and pass=?';
-    const values = [user_name,pass];
+    const values = [user_name, pass];
 
-    con.query(query,values,(error,results,feilds)=>{
-        if(error){
-            res.sendStatus(500);
-            
+    database.query(query, values, (error, results) => {
+        if (error) {
+            res.status(500).send({
+                message: "Something went wrong!"
+            });
         }
-        else{
-            if(results.length==0){
-                res.sendStatus(401);//wrong user_name or pass
+        else {
+            if (results.length == 0) {
+                res.status(401).send({
+                    message: "Invalid username or password!"
+                });
             }
-            else{
-                user=results[0];
-                res.sendStatus(200);
+            else {
+                user = results[0];
+                user.user_name = user_name
+                res.status(200).send({
+                    message: "Sign in successful!",
+                    result: user
+                });
             }
         }
     })
 });
 
-//read data
-app.get('/api/profile/:user_name',(req,res)=>{//show profile after sending user_name in URL parameter
-    const user_name=req.params.user_name;
-    //console.log(results);
-    let query = `select memberUser_name,full_name,joining_date,address,city,email,deposit `+
-    `from members,(select user_name,sum(amount)as deposit `+
-    `from transactiontable `+
-    `where user_name=? and (type = 1 or type = 2) `+
-    `GROUP BY user_name) temp `+
-    `where members.memberUser_name=temp.user_name;`
+// all transactions
+app.get("/api/transactions/:user_name", (req, res) => {
 
-    con.query(query,[user_name],(error,results,fields)=>{
-        if(error){
-            res.sendStatus(500);
-            console.log("Failed");
-        }
-        else{
-            res.json(results);
-            
-        }
-    })
-    
-});
-
-app.post('/api/deposit',(req,res)=>{//only to handle deposit
-    /*
-    when type = 1 => deposit
-    when type = 2 => withdraw
-    when type = 3 => loan 
-    when type = 4 => return loan
-    */
-    const {type,user_name,amount,TRANSACTION_date,TRANSACTION_time} = req.body;
-    let query='insert into transactiontable values(?,?,?,?,?)';
-    const values = [type,user_name,amount,TRANSACTION_date,TRANSACTION_time];
-    con.query(query,values,(error,results,fields)=>{
-        if(error){
-            res.sendStatus(500);
-        }
-        else{
-            res.sendStatus(200);
-        }
-    })
-});
-
-app.get('/api/tranHis/:user_name',(req,res)=>{//transaction history of a user_name
-    const user_name = req.params.user_name;
-    let query = 'select * from transactiontable where user_name=?;'
-
-    con.query(query,[user_name],(error,results)=>{
-        if(error){
-            res.sendStatus(500);
-        }
-        else{
-            res.json(results);
-            console.log(results);
-        }
-    });
-});
-
-app.post('/api/donate',(req,res)=>{//insert donation
-    const {user_name,donation_amount,donation_date} = req.body;
-    let query = 'insert into donation values(?,?,?)';
-    const values = [user_name,donation_amount,donation_date];
-
-    con.query(query,values,(error,results,fields)=>{
-        if(error){
-            res.sendStatus(500);
-            console.log(error);
-        }
-        else{
-            res.sendStatus(200);
-        }
-    });
-});
-
-app.post('/api/checkWithdraw',(req,res)=>{//this will check if the user can withdraw or not
-    const user_name = req.body.user_name;
-    const amount = req.body.amount;
-    //console.log(req.body);
-    let query = 'select user_name,sum(amount)as deposit '+
-    'from transactiontable '+
-    'where user_name=? and (type = 1 or type = 2) '+
-    'GROUP BY user_name;'
-
-    con.query(query,[user_name],(error,results,fields)=>{
-        //console.log(results);
-        if(error){
-            res.sendStatus(500);
-            //console.log(error);
-        }
-        else{
-            if(results[0].deposit>=amount){
-                res.sendStatus(200);
-                
+    // get all transactions
+    const GetTransactionsData = () => {
+        const query = `select * from transactions`
+        database.query(query, (error, result) => {
+            if (error) {
+                res.status(500).send({
+                    message: "Something went wrong!"
+                });
             }
-            else{
-                res.sendStatus(404);
-                //res.json(results);
+            else {
+                if (result.length == 0) {
+                    res.status(404).send({
+                        message: "No data found!"
+                    });
+                }
+                else {
+                    res.status(200).send({
+                        message: "",
+                        result
+                    });
+
+                }
             }
-        }
-    });
-});
+        })
+    }
 
-app.post('/api/withdraw',(req,res)=>{//only to handle withdraw
-    let {type,user_name,amount,TRANSACTION_date,TRANSACTION_time} = req.body;
-    amount*=(-1);
-    let query='insert into transactiontable values(?,?,?,?,?)';
-    const values = [type,user_name,amount,TRANSACTION_date,TRANSACTION_time];
-    con.query(query,values,(error,results,fields)=>{
-        if(error){
-            res.sendStatus(500);
-        }
-        else{
-            res.sendStatus(200);
-        }
-    })
-});
+    // user access
+    const UserAccess = () => {
+        const user_name = req.params.user_name;
+        let query = 'select * from members where memberUser_name=?';
 
-app.post('/api/checkAdmin',(req,res)=>{//check if the user is admin or not
-    const user_name = req.body.user_name;
-    let query = 'select * from admin where adminUser_name = ?';
-    
-    con.query(query,[user_name],(error,results,fields)=>{
-        if(error){
-            res.sendStatus(500);
-        }
-        else{
-            if(results.length==0){
-                res.sendStatus(404);
+        database.query(query, user_name, (error, result) => {
+            if (error) {
+                console.log(error)
+                res.status(500).send({
+                    message: "Something went wrong!"
+                });
             }
-            else{
-                res.sendStatus(200);
+            else {
+                if (result.length == 0) {
+                    res.status(500).send({
+                        message: "Invalid username or password!"
+                    });
+                }
+                else {
+                    const user = result[0];
+                    if (user.role === "admin") {
+                        GetTransactionsData(req, res)
+                    } else {
+                        res.status(409).send({
+                            message: "Ask to admin for confidential data!",
+                        });
+                    }
+
+                }
             }
-        }
-    });
-});
+        })
+    }
 
-app.get('/api/adminInfo/:user_name',(req,res)=>{//show admin information
-    const user_name = req.params.user_name;
-    let query = 'select * from admin where adminUser_name=?';
-    con.query(query,[user_name],(error,results,fields)=>{
-        if(error){
-            res.sendStatus(500);
-        }
-        else{
-            res.json(results);
-        }
-    });
-});
+    UserAccess();
+})
 
-app.post('api/checkLoaninfo',(req,res)=>{//check if the user has paid debt or not
-    const user_name = req.body.user_name;
-    const return_date = req.body.return_date;
-    let query = 'select * from loan where user_name=?';
-    
-    con.query(query,[user_name],(error,results,fields)=>{
-        if(error){
-            res.sendStatus(500);
-        }
-        else{
-            if(results[0].return_date<return_date){
-                res.sendStatus(404);
+// donate
+app.post("/api/transactions/donate", (req, res) => {
+
+    const { amount, user_name } = req.body;
+
+    // adding donation to db
+    const AddDonation = (previousAmount, id) => {
+        const date = new Date()
+        const dataToSet = [id + 1, user_name, "donate", amount, amount + previousAmount, date.toLocaleDateString()]
+        const query = 'insert into transactions values(?,?,?,?,?,?)';
+        database.query(query, dataToSet, (error) => {
+            if (error) {
+                console.log(error)
+                res.status(500).send({
+                    message: "Something went wrong!"
+                });
             }
-            else{
-                res.sendStatus(200);
+            else {
+                res.status(200).send({
+                    message: "Donation successful!"
+                });
             }
-        }
-    });
-});
+        })
+    }
 
-app.post('/api/takeLoan',(req,res)=>{//insert loan info
-    const {user_name,jimmadar1,jimmadar2,issue_date,return_date,amount} = req.body;
-    let query = 'insert into loan values(?,?,?,?,?,?)';
-    const values = [user_name,jimmadar1,jimmadar2,issue_date,return_date,amount];
+    // getting balance
+    const GetAmount = () => {
+        const query = `select * from transactions`
 
-    con.query(query,values,(error,results,fields)=>{
-        if(error){
-            res.sendStatus(500);
-        }
-        else{
-            res.sendStatus(200);
-        }
-    });
-});
+        database.query(query, (error, result) => {
+            if (error) {
+                res.status(500).send({
+                    message: "Something went wrong!"
+                });
+            }
+            else {
+                if (result.length == 0) {
+                    res.status(500).send({
+                        message: "No data found!"
+                    });
+                }
+                else {
+                    const capital = result[result.length - 1].capital;
+                    const id = result[result.length - 1].id;
+                    if (capital, id) {
+                        AddDonation(capital, id);
+                    }
+                }
+            }
+        })
+    }
 
-app.get('api/showLoan/:user_name',(req,res)=>{//show loan information
-    const user_name = req.params.user_name;
-    let query = 'select * from loan where user_name=?';
+    // user access
+    const UserAccess = () => {
+        let query = 'select * from members where memberUser_name=?';
 
-    con.query(query,[user_name],(error,results,fields)=>{
-        if(error){
-            res.sendStatus(500);
-        }
-        else{
-            res.json(results);
-        }
-    });
-});
+        database.query(query, user_name, (error, result) => {
+            if (error) {
+                res.status(500).send({
+                    message: "Something went wrong!"
+                });
+            }
+            else {
+                if (result.length == 0) {
+                    res.status(500).send({
+                        message: "Invalid username or password!"
+                    });
+                }
+                else {
+                    const user = result[0];
+                    if (user) {
+                        GetAmount();
+                    }
+                }
+            }
+        })
+    }
 
-//delete data
-app.delete('/api/deleteLoan/:user_name',(req,res)=>{//delete info from loan table after clearing debt
-    const user_name = req.params.user_name;
-    let query = 'delete from loan where user_name=?';
+    UserAccess();
+})
 
-    con.query(query,[user_name],(error,results,fields)=>{
-        if(error){
-            res.sendStatus(500);
-        }
-        else{
-            res.sendStatus(200);
-        }
-    });
-});
+// loan
+app.post("/api/transactions/loan", (req, res) => {
 
-app.listen(port,()=>{
+    const { amount, user_name } = req.body;
+
+    // adding loan to db
+    const AddLoan = (previousAmount, id) => {
+        const date = new Date()
+        const dataToSet = [id + 1, user_name, "loan", amount, previousAmount - amount, date.toLocaleDateString()]
+        const query = 'insert into transactions values(?,?,?,?,?,?)';
+        database.query(query, dataToSet, (error) => {
+            if (error) {
+                console.log(error)
+                res.status(500).send({
+                    message: "Something went wrong!"
+                });
+            }
+            else {
+                res.status(200).send({
+                    message: "Loan successful!"
+                });
+            }
+        })
+    }
+
+    // getting balance
+    const GetAmount = () => {
+        const query = `select * from transactions`
+
+        database.query(query, (error, result) => {
+            if (error) {
+                res.status(500).send({
+                    message: "Something went wrong!"
+                });
+            }
+            else {
+                if (result.length == 0) {
+                    res.status(500).send({
+                        message: "No data found!"
+                    });
+                }
+                else {
+                    const capital = result[result.length - 1].capital;
+                    const id = result[result.length - 1].id;
+                    if (capital && id) {
+
+                        if (capital >= amount && capital > 2000) {
+                            AddLoan(capital, id);
+                        } else {
+                            res.status(404).send({
+                                message: "Not enough money!"
+                            })
+                        }
+                    } else {
+                        res.status(500).send({
+                            message: "Something went wrong!"
+                        });
+                    }
+                }
+            }
+        })
+    }
+
+    // user access
+    const UserAccess = () => {
+        let query = 'select * from members where memberUser_name=?';
+
+        database.query(query, user_name, (error, result) => {
+            if (error) {
+                res.status(500).send({
+                    message: "Something went wrong!"
+                });
+            }
+            else {
+                if (result.length == 0) {
+                    res.status(500).send({
+                        message: "Invalid username or password!"
+                    });
+                }
+                else {
+                    const user = result[0];
+                    if (user) {
+                        GetAmount();
+                    }
+                }
+            }
+        })
+    }
+
+    UserAccess();
+})
+
+// listening server
+app.listen(port, () => {
     console.log(`app is listening to port ${port}`);
 });
